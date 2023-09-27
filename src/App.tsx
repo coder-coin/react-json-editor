@@ -1,64 +1,30 @@
-import { useEffect, useState } from 'react';
-import { ConfigProvider, Form, message } from 'antd';
+import { useState } from 'react';
+import { ConfigProvider } from 'antd';
 import ReactCodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
-import { json } from '@codemirror/lang-json';
+import { langs } from '@uiw/codemirror-extensions-langs';
 import DynamicItem from './DynamicItem';
-import { NamePath } from 'antd/es/form/interface';
 import { getDefaultID } from './utils/string';
+import useEditorStore from './stores/editor.store';
 
 function App() {
-  const [form] = Form.useForm();
-  const [messageApi, contextHolder] = message.useMessage();
-  const [jsonString, setJsonString] = useState('');
-  const [fields, setFields] = useState<string[]>([getDefaultID()]);
+  const json = useEditorStore((state) => state.json);
+  const [childrenKeys, setChildrenKeys] = useState<string[]>([getDefaultID()]);
 
-  const add = (name: NamePath, id: string, preName?: NamePath) => {
-    if (preName) {
-      const father = form.getFieldValue(preName);
-      console.log('father: ', father);
-      if (
-        Object.prototype.toString.call(father) === '[object Object]' &&
-        Reflect.ownKeys(father).includes('')
-      ) {
-        return messageApi.warning('Name cannot be empty');
-      }
-    } else if (!preName) {
-      const father = form.getFieldsValue();
-      if (Reflect.ownKeys(father).includes('')) {
-        return messageApi.warning('Name cannot be empty');
-      }
-    } else if (name === '') {
-      messageApi.warning('Name cannot be empty');
-      return;
-    }
-    setFields((state) => {
-      const index = state.indexOf(id);
-      const newState = [...state];
-      newState.splice(index + 1, 0, getDefaultID());
-      return newState;
-    });
+  const addChildrenKey = (key: string) => {
+      setChildrenKeys((state) => {
+        const index = state.indexOf(key);
+        const newState = [...state];
+        newState.splice(index + 1, 0, getDefaultID());
+        return newState;
+      });
   };
-  const remove = (name: string) => {
-    setFields((state) => state.filter((field) => field !== name));
+  const removeChildrenKey = (key: string) => {
+    if (childrenKeys.length === 1) return;
+    setChildrenKeys((state) => state.filter((item) => item !== key));
   };
-  const handleFormChange = async () => {
-    console.log(form.getFieldsValue());
-    try {
-      const result = await form.validateFields();
-      if (result) {
-        setJsonString(JSON.stringify(result, null, 2));
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  };
-  useEffect(() => {
-    setJsonString(JSON.stringify(form.getFieldsValue(), null, 2));
-  }, [form]);
   return (
     <>
-      {contextHolder}
       <ConfigProvider
         theme={{
           token: {
@@ -67,24 +33,24 @@ function App() {
         }}
       >
         <div className="flex">
-          <Form name="json-editor" form={form} className="sapce-y-4 flex-1 p-2">
-            {fields.map((field) => (
+          <div className="flex-1 space-y-4 p-4">
+            {childrenKeys.map((key) => (
               <DynamicItem
-                key={field}
-                id={field}
-                add={add}
-                remove={remove}
-                onFormChange={handleFormChange}
+                key={key}
+                id={key}
+                addSibling={addChildrenKey}
+                removeSelf={removeChildrenKey}
               />
             ))}
-          </Form>
+          </div>
           <ReactCodeMirror
             className="flex-1"
-            value={jsonString}
+            value={JSON.stringify(json, null, 2)}
             basicSetup={{ crosshairCursor: false }}
             theme={vscodeDark}
-            extensions={[json()]}
+            extensions={[langs.json()]}
             height="500px"
+            readOnly
           />
         </div>
       </ConfigProvider>

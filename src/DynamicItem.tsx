@@ -1,16 +1,19 @@
-import { Button, Form, Input, Select, Switch, Tooltip } from 'antd';
+import { Input, Select, Switch, Tooltip } from 'antd';
 import { DefaultOptionType } from 'antd/es/select';
-import { ChangeEvent, useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@iconify/react';
 import plusIcon from '@iconify/icons-tabler/plus';
 import trashX from '@iconify/icons-tabler/trash-x';
-import { NamePath } from 'antd/es/form/interface';
+import squarePlus2 from '@iconify/icons-tabler/square-plus-2';
+import chevronRight from '@iconify/icons-tabler/chevron-right';
+import { getDefaultID } from './utils/string';
+import useEditorStore from './stores/editor.store';
 interface Props {
   id: string;
-  add: (name: NamePath, id: string, preName?: NamePath) => void;
-  remove: (name: string) => void;
-  onFormChange: () => void;
-  preNamePath?: NamePath;
+  addSibling: (id: string) => void;
+  removeSelf: (key: string) => void;
+  preNamePath?: string;
+  index?: number;
 }
 
 const typeOptions: DefaultOptionType[] = [
@@ -31,139 +34,230 @@ const typeOptions: DefaultOptionType[] = [
     value: 'array',
   },
   {
-    label: 'obejct',
-    value: 'obejct',
+    label: 'object',
+    value: 'object',
   },
 ];
 
 const getInitialValue = (type: string) => {
   switch (type) {
+    case 'string':
+      return '';
     case 'number':
       return 0;
     case 'boolean':
       return false;
+    case 'object':
+      return {};
+    case 'array':
+      return [];
     default:
-      return '';
+      return null;
   }
 };
 
 const DynamicItem: React.FC<Props> = ({
   id,
-  add,
-  onFormChange,
-  remove,
+  addSibling,
+  removeSelf,
   preNamePath,
+  index,
 }) => {
-  const form = Form.useFormInstance();
+  const { getJson, updateValue, updateKey, removeKeyFromJson, getValue } =
+    useEditorStore();
 
-  const [name, setName] = useState<NamePath>(
-    preNamePath ? [...preNamePath, ''] : '',
-  );
-  const [type, settype] = useState('string');
+  const [name, setName] = useState<string>('');
+  const [type, setType] = useState('string');
+  const [value, setValue] = useState<string | number | boolean | null>('');
+  const [collapse, setCollapse] = useState(true);
+  const [childrenKeys, setChildrenKeys] = useState<string[]>([]);
+  const currentPath = useRef<string>(preNamePath || '');
 
+  // Handle name input
   const handleNameChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      // Get value of the name
-      const value = form.getFieldValue(name);
-      if (typeof name === 'string') {
-        form.setFieldValue(e.target.value, value);
-        setName(e.target.value);
-      } else if (Array.isArray(name)) {
-        setName((state: string[]) => {
-          const copyName = [...state];
-          copyName.splice(copyName.length - 1, 1, e.target.value);
-          form.setFieldValue(copyName, value);
-          return copyName;
-        });
-      }
-      onFormChange();
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newPath = preNamePath
+        ? `${preNamePath}.${e.target.value}`
+        : e.target.value;
+      // if change the upper level keys
+      updateKey(
+        currentPath.current,
+        newPath,
+        getValue(currentPath.current) || '',
+      );
+      // Update current path
+      currentPath.current = newPath;
+      setName(e.target.value);
     },
-    [form, name, onFormChange],
+    [getValue, preNamePath, updateKey],
   );
+  // Handle value input
+  const handleValueChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const input = type === 'string' ? e.target.value : Number(e.target.value);
+      updateValue(currentPath.current, input);
+      setValue(input);
+    },
+    [type, updateValue],
+  );
+  // Handle type change
   const handleTyepChange = (value: string) => {
-    let initialValue;
-    if (value === 'number') {
-      initialValue = 0;
-    } else if (value === 'boolean') {
-      initialValue = false;
+    updateValue(currentPath.current, getInitialValue(value));
+    setType(value);
+    // Add first child
+    if (value === 'object' || value === 'array') {
+      setChildrenKeys([getDefaultID()]);
+      setCollapse(false);
     } else {
-      initialValue = '';
+      setChildrenKeys([]);
+      setCollapse(true);
     }
-    settype(value);
-    form.setFieldValue(name, initialValue);
-    onFormChange();
   };
+  // Value item rednerer
   const valueInputRenderer = useMemo(() => {
-    const handleValueChange = () => {
-      onFormChange();
+    const handleSwitchChange = (value: boolean) => {
+      updateValue(currentPath.current, value);
+      setValue(value);
     };
     if (type === 'string' || type === 'number') {
       return (
         <Input
+          value={value as string | number}
           type={type === 'string' ? 'text' : 'number'}
           placeholder="Value"
           onChange={handleValueChange}
+          defaultValue={type === 'string' ? '' : 0}
         />
       );
     } else if (type === 'boolean') {
-      return <Switch onChange={handleValueChange} />;
+      return (
+        <Switch checked={value as boolean} onChange={handleSwitchChange} />
+      );
     }
-    return <Input disabled className="flex-1" />;
-  }, [onFormChange, type]);
-  const handleAdd = () => {
-    add(name, id, preNamePath);
-    onFormChange();
-  };
-  const handleRemove = async () => {
-    try {
-      const result = await form?.validateFields();
-      if (Reflect.ownKeys(result).length === 1) return;
-      remove(id);
-      onFormChange();
-    } catch (error) {
-      console.log(error);
+    return <Input disabled />;
+  }, [handleValueChange, type, updateValue, value]);
+  // Add new children
+  const handleAddChildren = (key?: string) => {
+    if (key) {
+      setChildrenKeys((state) => {
+        const index = state.indexOf(key);
+        const newState = [...state];
+        newState.splice(index + 1, 0, getDefaultID());
+        return newState;
+      });
+    } else {
+      setChildrenKeys((state) => [...state, getDefaultID()]);
     }
   };
+  // Control add sibling
+  const handleSiblingAdd = (id: string) => {
+    addSibling(id);
+  };
+  // Control remove self
+  const handleRemove = () => {
+    if (Reflect.ownKeys(getJson()).length === 1) {
+      setName('');
+      setValue('');
+    }
+    removeKeyFromJson(currentPath.current);
+    removeSelf(id);
+  };
+  const handleCollapse = () => {
+    setCollapse((state) => !state);
+  };
+  const handleRemoveChildren = (id: string) => {
+    setChildrenKeys((state) => state.filter((item) => item !== id));
+  };
+  // Update path when current component'name be changed
+  useEffect(() => {
+    currentPath.current = preNamePath ? `${preNamePath}.${name}` : name;
+  }, [name, preNamePath]);
+  // When current component is an item of array,update path
+  useEffect(() => {
+    if (index !== undefined) {
+      currentPath.current = preNamePath
+        ? `${preNamePath}[${index}]`
+        : `${index}`;
+    }
+  }, [index, preNamePath]);
   return (
-    <div className="flex gap-4 rounded border p-2">
-      <Input
-        placeholder="Name"
-        status={name === '' ? 'error' : undefined}
-        onChange={handleNameChange}
-        className="flex-1"
-      />
-      <Select
-        options={typeOptions}
-        onChange={handleTyepChange}
-        defaultValue="string"
-        className="flex-1"
-      />
-      <Form.Item
-        name={name}
-        normalize={(value: string | boolean) =>
-          type === 'number' ? Number(value) : value
-        }
-        valuePropName={type === 'boolean' ? 'checked' : 'value'}
-        initialValue={getInitialValue(type)}
-        className={`flex-1 ${type === 'boolean' ? 'flex justify-center' : ''}`}
-      >
-        {valueInputRenderer}
-      </Form.Item>
-      <Tooltip
-        title={
-          type === 'array' || type === 'object'
-            ? 'Add child node'
-            : 'Add sibling node'
-        }
-      >
-        <Button type="primary" onClick={handleAdd}>
-          <Icon icon={plusIcon} fontSize={20} />
-        </Button>
-      </Tooltip>
-
-      <Button danger onClick={handleRemove}>
-        <Icon icon={trashX} fontSize={20} />
-      </Button>
+    <div className="space-y-2 rounded border p-2">
+      <div className="flex items-center gap-4 ">
+        {type === 'object' || type === 'array' ? (
+          <Icon
+            icon={chevronRight}
+            fontSize={20}
+            className={!collapse ? 'rotate-90' : ''}
+            onClick={handleCollapse}
+          />
+        ) : undefined}
+        {}
+        <div className="flex flex-1 gap-4">
+          {type !== 'arrary' && index === undefined && (
+            <Input
+              type="text"
+              value={name}
+              placeholder="Name"
+              status={name === '' ? 'error' : undefined}
+              onChange={handleNameChange}
+              className="flex-1"
+            />
+          )}
+          <Select
+            disabled={
+              type !== 'arrary' && index === undefined && name.length === 0
+            }
+            options={typeOptions}
+            onChange={handleTyepChange}
+            defaultValue="string"
+            className="flex-1"
+          />
+          <div className="flex flex-1 items-center justify-center">
+            {type !== 'object' && type !== 'array'
+              ? valueInputRenderer
+              : undefined}
+          </div>
+        </div>
+        {(type === 'array' || type === 'object') &&
+        childrenKeys.length === 0 ? (
+          <Tooltip title="Add child node">
+            <span
+              className="cursor-pointer rounded-full border p-1 text-blue-600"
+              onClick={() => handleAddChildren(childrenKeys[0])}
+            >
+              <Icon icon={squarePlus2} fontSize={20} />
+            </span>
+          </Tooltip>
+        ) : undefined}
+        <Tooltip title="Add sibling node">
+          <span
+            className="cursor-pointer rounded-full border p-1 text-blue-600"
+            onClick={() => handleSiblingAdd(id)}
+          >
+            <Icon icon={plusIcon} fontSize={20} />
+          </span>
+        </Tooltip>
+        <span
+          className="cursor-pointer rounded-full border p-1 text-red-500"
+          onClick={handleRemove}
+        >
+          <Icon icon={trashX} fontSize={20} />
+        </span>
+      </div>
+      {!collapse && (
+        <div className="space-y-2 border-t py-2 pl-10 pr-2">
+          {childrenKeys.map((key, index) => (
+            <DynamicItem
+              key={key}
+              id={key}
+              addSibling={handleAddChildren}
+              removeSelf={handleRemoveChildren}
+              preNamePath={currentPath.current}
+              index={type === 'array' ? index : undefined}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
