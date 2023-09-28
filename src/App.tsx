@@ -1,60 +1,54 @@
 import { useState } from 'react';
-import { ConfigProvider } from 'antd';
+import useEditorStore from './stores/editor.store';
+import { ConfigProvider, Switch } from 'antd';
 import ReactCodeMirror from '@uiw/react-codemirror';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import DynamicItem from './DynamicItem';
-import { getDefaultID } from './utils/string';
-import useEditorStore from './stores/editor.store';
+import JSONEditor from './Editor_json';
+import JSON5Editor from './Editor_json5';
 
 function App() {
   const json = useEditorStore((state) => state.json);
-  const [childrenKeys, setChildrenKeys] = useState<string[]>([getDefaultID()]);
-
-  const addChildrenKey = (key: string) => {
-      setChildrenKeys((state) => {
-        const index = state.indexOf(key);
-        const newState = [...state];
-        newState.splice(index + 1, 0, getDefaultID());
-        return newState;
-      });
-  };
-  const removeChildrenKey = (key: string) => {
-    if (childrenKeys.length === 1) return;
-    setChildrenKeys((state) => state.filter((item) => item !== key));
+  const [mode, setMode] = useState('json');
+  const handleModeChange = (value: boolean) => {
+    setMode(value ? 'json5' : 'json');
   };
   return (
-    <>
-      <ConfigProvider
-        theme={{
-          token: {
-            colorPrimary: '#9333ea',
-          },
-        }}
-      >
-        <div className="flex">
-          <div className="flex-1 space-y-4 p-4">
-            {childrenKeys.map((key) => (
-              <DynamicItem
-                key={key}
-                id={key}
-                addSibling={addChildrenKey}
-                removeSelf={removeChildrenKey}
-              />
-            ))}
-          </div>
-          <ReactCodeMirror
-            className="flex-1"
-            value={JSON.stringify(json, null, 2)}
-            basicSetup={{ crosshairCursor: false }}
-            theme={vscodeDark}
-            extensions={[langs.json()]}
-            height="500px"
-            readOnly
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#9333ea',
+        },
+      }}
+    >
+      <div className="flex h-full flex-col">
+        <div className="container mx-auto flex h-20 items-center gap-4 px-4">
+          <span className="text-lg font-semibold">React JSON Editor</span>
+          <Switch
+            checkedChildren="json5"
+            unCheckedChildren="json"
+            defaultChecked={false}
+            onChange={handleModeChange}
           />
         </div>
-      </ConfigProvider>
-    </>
+        <div className="flec-col container mx-auto flex flex-1 overflow-auto p-4">
+          <div className="flex w-full rounded border">
+            <div className="h-full flex-1 overflow-auto">
+              {mode === 'json' ? <JSONEditor /> : <JSON5Editor />}
+            </div>
+            <div className="editor flex-1">
+              <ReactCodeMirror
+                value={JSON.stringify(json, null, 2)}
+                basicSetup={{ crosshairCursor: false }}
+                theme={vscodeDark}
+                extensions={[langs.json()]}
+                readOnly
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </ConfigProvider>
   );
 }
 

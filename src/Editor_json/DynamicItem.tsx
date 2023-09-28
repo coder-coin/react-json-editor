@@ -6,8 +6,9 @@ import plusIcon from '@iconify/icons-tabler/plus';
 import trashX from '@iconify/icons-tabler/trash-x';
 import squarePlus2 from '@iconify/icons-tabler/square-plus-2';
 import chevronRight from '@iconify/icons-tabler/chevron-right';
-import { getDefaultID } from './utils/string';
-import useEditorStore from './stores/editor.store';
+import { getDefaultID } from '@/utils/string';
+import useEditorStore from '@/stores/editor.store';
+
 interface Props {
   id: string;
   addSibling: (id: string) => void;
