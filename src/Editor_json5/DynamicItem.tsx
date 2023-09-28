@@ -1,19 +1,18 @@
 import { Input, Select, Switch, Tooltip } from 'antd';
 import { DefaultOptionType } from 'antd/es/select';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Icon } from '@iconify/react';
 import plusIcon from '@iconify/icons-tabler/plus';
 import trashX from '@iconify/icons-tabler/trash-x';
 import squarePlus2 from '@iconify/icons-tabler/square-plus-2';
 import chevronRight from '@iconify/icons-tabler/chevron-right';
 import { getDefaultID } from '@/utils/string';
-import useEditorStore from '@/stores/json.store';
-
+import useJSON5Store from '@/stores/json5.store';
 interface Props {
   id: string;
   addSibling: (id: string) => void;
   removeSelf: (key: string) => void;
-  preNamePath?: string;
+  prePath: string[];
   index?: number;
 }
 
@@ -48,12 +47,8 @@ const getInitialValue = (type: string) => {
       return 0;
     case 'boolean':
       return false;
-    case 'object':
-      return {};
-    case 'array':
-      return [];
     default:
-      return null;
+      return '';
   }
 };
 
@@ -61,64 +56,79 @@ const DynamicItem: React.FC<Props> = ({
   id,
   addSibling,
   removeSelf,
-  preNamePath,
+  prePath,
   index,
 }) => {
-  const { getJson, updateValue, updateKey, removeKeyFromJson, getValue } =
-    useEditorStore();
+  const { create, update, remove, getFields } = useJSON5Store();
 
   const [name, setName] = useState<string>('');
   const [type, setType] = useState('string');
   const [value, setValue] = useState<string | number | boolean | null>('');
   const [collapse, setCollapse] = useState(true);
   const [childrenKeys, setChildrenKeys] = useState<string[]>([]);
-  const currentPath = useRef<string>(preNamePath || '');
+  const currentPath = useRef<string[]>(prePath ? [...prePath, id] : []);
 
   // Handle name input
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newPath = preNamePath
-        ? `${preNamePath}.${e.target.value}`
-        : e.target.value;
-      // if change the upper level keys
-      updateKey(
-        currentPath.current,
-        newPath,
-        getValue(currentPath.current) || '',
-      );
-      // Update current path
-      currentPath.current = newPath;
+      console.log(e.target.value);
+      update(currentPath.current, {
+        key: e.target.value,
+      });
       setName(e.target.value);
     },
-    [getValue, preNamePath, updateKey],
+    [update],
   );
   // Handle value input
   const handleValueChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const input = type === 'string' ? e.target.value : Number(e.target.value);
-      updateValue(currentPath.current, input);
+      update(currentPath.current, {
+        value: input,
+      });
       setValue(input);
     },
-    [type, updateValue],
+    [type, update],
   );
   // Handle type change
-  const handleTyepChange = (value: string) => {
-    updateValue(currentPath.current, getInitialValue(value));
-    setType(value);
-    // Add first child
-    if (value === 'object' || value === 'array') {
-      setChildrenKeys([getDefaultID()]);
+  const handleTyepChange = (type: string) => {
+    console.log(currentPath.current);
+    update(currentPath.current, {
+      type,
+    });
+    setType(type);
+
+    if (type === 'object' || type === 'array') {
+      // Add first child
+      const defaultID = getDefaultID();
+      create({
+        id: defaultID,
+        key: null,
+        path: [...currentPath.current, defaultID],
+        type: 'string',
+      });
+      setChildrenKeys([defaultID]);
       setCollapse(false);
     } else {
+      setValue(getInitialValue(type));
       setChildrenKeys([]);
       setCollapse(true);
     }
   };
+  // Handle comment change
+  const handleCommentChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      update(currentPath.current, { comment: e.target.value });
+    },
+    [update],
+  );
   // Value item rednerer
   const valueInputRenderer = useMemo(() => {
-    const handleSwitchChange = (value: boolean) => {
-      updateValue(currentPath.current, value);
-      setValue(value);
+    const handleSwitchChange = (checked: boolean) => {
+      update(currentPath.current, {
+        value: checked,
+      });
+      setValue(checked);
     };
     if (type === 'string' || type === 'number') {
       return (
@@ -136,19 +146,26 @@ const DynamicItem: React.FC<Props> = ({
       );
     }
     return <Input disabled />;
-  }, [handleValueChange, type, updateValue, value]);
+  }, [handleValueChange, type, update, value]);
   // Add new children
   const handleAddChildren = (key?: string) => {
+    const defaultID = getDefaultID();
     if (key) {
       setChildrenKeys((state) => {
         const index = state.indexOf(key);
         const newState = [...state];
-        newState.splice(index + 1, 0, getDefaultID());
+        newState.splice(index + 1, 0, defaultID);
         return newState;
       });
     } else {
-      setChildrenKeys((state) => [...state, getDefaultID()]);
+      setChildrenKeys((state) => [...state, defaultID]);
     }
+    create({
+      id: defaultID,
+      key: null,
+      type: 'string',
+      path: [...currentPath.current, defaultID],
+    });
   };
   // Control add sibling
   const handleSiblingAdd = (id: string) => {
@@ -156,11 +173,11 @@ const DynamicItem: React.FC<Props> = ({
   };
   // Control remove self
   const handleRemove = () => {
-    if (Reflect.ownKeys(getJson()).length === 1) {
+    if (getFields().length === 1) {
       setName('');
       setValue('');
     }
-    removeKeyFromJson(currentPath.current);
+    remove(currentPath.current);
     removeSelf(id);
   };
   const handleCollapse = () => {
@@ -168,19 +185,8 @@ const DynamicItem: React.FC<Props> = ({
   };
   const handleRemoveChildren = (id: string) => {
     setChildrenKeys((state) => state.filter((item) => item !== id));
+    remove([...currentPath.current, id]);
   };
-  // Update path when current component'name be changed
-  useEffect(() => {
-    currentPath.current = preNamePath ? `${preNamePath}.${name}` : name;
-  }, [name, preNamePath]);
-  // When current component is an item of array,update path
-  useEffect(() => {
-    if (index !== undefined) {
-      currentPath.current = preNamePath
-        ? `${preNamePath}[${index}]`
-        : `${index}`;
-    }
-  }, [index, preNamePath]);
   return (
     <div className="space-y-2 rounded border p-2">
       <div className="flex items-center gap-4 ">
@@ -194,6 +200,15 @@ const DynamicItem: React.FC<Props> = ({
         ) : undefined}
         {}
         <div className="flex flex-1 gap-4">
+          <Select
+            disabled={
+              type !== 'arrary' && index === undefined && name.length === 0
+            }
+            options={typeOptions}
+            onChange={handleTyepChange}
+            defaultValue="string"
+            className="flex-1"
+          />
           {type !== 'arrary' && index === undefined && (
             <Input
               type="text"
@@ -204,20 +219,16 @@ const DynamicItem: React.FC<Props> = ({
               className="flex-1"
             />
           )}
-          <Select
-            disabled={
-              type !== 'arrary' && index === undefined && name.length === 0
-            }
-            options={typeOptions}
-            onChange={handleTyepChange}
-            defaultValue="string"
-            className="flex-1"
-          />
           <div className="flex flex-1 items-center justify-center">
             {type !== 'object' && type !== 'array'
               ? valueInputRenderer
               : undefined}
           </div>
+          <Input
+            placeholder="Comment"
+            className="flex-1"
+            onChange={handleCommentChange}
+          />
         </div>
         {(type === 'array' || type === 'object') &&
         childrenKeys.length === 0 ? (
@@ -261,7 +272,7 @@ const DynamicItem: React.FC<Props> = ({
               id={key}
               addSibling={handleAddChildren}
               removeSelf={handleRemoveChildren}
-              preNamePath={currentPath.current}
+              prePath={currentPath.current}
               index={type === 'array' ? index : undefined}
             />
           ))}
