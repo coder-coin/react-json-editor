@@ -222,26 +222,34 @@ const DynamicItem: React.FC<Props> = ({
         childrenKeys.length === 0 ? (
           <Tooltip title="Add child node">
             <span
-              className="cursor-pointer rounded-full border p-1 text-blue-600"
+              className="group cursor-pointer rounded-full border p-1 text-blue-600"
               onClick={() => handleAddChildren(childrenKeys[0])}
             >
-              <Icon icon={squarePlus2} fontSize={20} />
+              <Icon
+                icon={squarePlus2}
+                fontSize={20}
+                className="group-hover:scale-90"
+              />
             </span>
           </Tooltip>
         ) : undefined}
         <Tooltip title="Add sibling node">
           <span
-            className="cursor-pointer rounded-full border p-1 text-blue-600"
+            className="group cursor-pointer rounded-full border p-1 text-blue-600"
             onClick={() => handleSiblingAdd(id)}
           >
-            <Icon icon={plusIcon} fontSize={20} />
+            <Icon
+              icon={plusIcon}
+              fontSize={20}
+              className="group-hover:scale-90"
+            />
           </span>
         </Tooltip>
         <span
-          className="cursor-pointer rounded-full border p-1 text-red-500"
+          className="group cursor-pointer rounded-full border p-1 text-red-500"
           onClick={handleRemove}
         >
-          <Icon icon={trashX} fontSize={20} />
+          <Icon icon={trashX} fontSize={20} className="group-hover:scale-90" />
         </span>
       </div>
       {!collapse && (
