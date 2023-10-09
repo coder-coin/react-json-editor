@@ -188,7 +188,7 @@ export function commonFieldParser(
     value = field.value;
   }
   value += needComma ? ',' : '';
-  value += field.comment ? `  // ${field.comment}` : '';
+  value += field.comment ? `  //${field.comment}` : '';
   const key = field.key ? `"${field.key}":` : '';
   return tabIndent + key + value;
 }
@@ -201,7 +201,7 @@ export function commonFieldParser(
 export function fieldsParser(metaArray: Field[], level = 1) {
   return metaArray
     .reduce((acc, cur, index) => {
-      const comment = cur.comment ? `//  ${cur.comment}` : '';
+      const comment = cur.comment ? `//${cur.comment}` : '';
       if (cur.type === 'array') {
         const arrayStr = `${tabIndent.repeat(level)}${
           cur.key ? `"${cur.key}":` : ''
