@@ -1,14 +1,16 @@
-import { DataMeta, Field, UpdateParams } from '@/type';
-import { createField, removeField, updateField } from '@/utils/json5';
+import { Field, UpdateParams } from '@/type';
+import { createField, getField, removeField, updateField } from '@/utils/json5';
 import { create } from 'zustand';
 interface State {
-  fields: DataMeta[];
+  fields: Field[];
 }
 interface Action {
   create: (field: Field) => void;
   update: (path: string[], updateParams: UpdateParams) => void;
   remove: (path: string[]) => void;
-  getFields: () => DataMeta[];
+  getFields: () => Field[];
+  getField: (path: string[]) => Field;
+  reset: () => void;
 }
 
 const useJSON5Store = create<State & Action>((set, get) => ({
@@ -26,6 +28,8 @@ const useJSON5Store = create<State & Action>((set, get) => ({
     set({ fields: newField });
   },
   getFields: () => get().fields,
+  getField: (path) => getField(get().fields, path),
+  reset: () => set({ fields: [] }),
 }));
 
 export default useJSON5Store;

@@ -1,6 +1,7 @@
 import { Input, Select, Switch, Tooltip } from 'antd';
 import { DefaultOptionType } from 'antd/es/select';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSetState } from 'ahooks';
 import { Icon } from '@iconify/react';
 import plusIcon from '@iconify/icons-tabler/plus';
 import trashX from '@iconify/icons-tabler/trash-x';
@@ -15,7 +16,12 @@ interface Props {
   prePath: string[];
   index?: number;
 }
-
+interface FieldState {
+  type: string;
+  name: string;
+  value: string | number | boolean | null;
+  comment: string;
+}
 const typeOptions: DefaultOptionType[] = [
   {
     label: 'string',
@@ -59,11 +65,14 @@ const DynamicItem: React.FC<Props> = ({
   prePath,
   index,
 }) => {
-  const { create, update, remove, getFields } = useJSON5Store();
-
-  const [name, setName] = useState<string>('');
-  const [type, setType] = useState('string');
-  const [value, setValue] = useState<string | number | boolean | null>('');
+  const { create, update, remove, getFields, getField, reset } =
+    useJSON5Store();
+  const [fieldState, setFieldState] = useSetState<FieldState>({
+    type: 'string',
+    name: '',
+    value: '',
+    comment: '',
+  });
   const [collapse, setCollapse] = useState(true);
   const [childrenKeys, setChildrenKeys] = useState<string[]>([]);
   const currentPath = useRef<string[]>(prePath ? [...prePath, id] : []);
@@ -71,33 +80,32 @@ const DynamicItem: React.FC<Props> = ({
   // Handle name input
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      console.log(e.target.value);
+      console.log(currentPath.current);
       update(currentPath.current, {
         key: e.target.value,
       });
-      setName(e.target.value);
+      setFieldState({ name: e.target.value });
     },
-    [update],
+    [setFieldState, update],
   );
   // Handle value input
   const handleValueChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const input = type === 'string' ? e.target.value : Number(e.target.value);
+      const input =
+        fieldState.type === 'string' ? e.target.value : Number(e.target.value);
       update(currentPath.current, {
         value: input,
       });
-      setValue(input);
+      setFieldState({ value: input });
     },
-    [type, update],
+    [fieldState.type, setFieldState, update],
   );
   // Handle type change
   const handleTyepChange = (type: string) => {
-    console.log(currentPath.current);
     update(currentPath.current, {
       type,
     });
-    setType(type);
-
+    setFieldState({ type });
     if (type === 'object' || type === 'array') {
       // Add first child
       const defaultID = getDefaultID();
@@ -110,7 +118,7 @@ const DynamicItem: React.FC<Props> = ({
       setChildrenKeys([defaultID]);
       setCollapse(false);
     } else {
-      setValue(getInitialValue(type));
+      setFieldState({ value: getInitialValue(type) });
       setChildrenKeys([]);
       setCollapse(true);
     }
@@ -118,9 +126,11 @@ const DynamicItem: React.FC<Props> = ({
   // Handle comment change
   const handleCommentChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      update(currentPath.current, { comment: e.target.value });
+      const input = e.target.value;
+      update(currentPath.current, { comment: input });
+      setFieldState({ comment: input });
     },
-    [update],
+    [setFieldState, update],
   );
   // Value item rednerer
   const valueInputRenderer = useMemo(() => {
@@ -128,8 +138,9 @@ const DynamicItem: React.FC<Props> = ({
       update(currentPath.current, {
         value: checked,
       });
-      setValue(checked);
+      setFieldState({ value: checked });
     };
+    const { type, value } = fieldState;
     if (type === 'string' || type === 'number') {
       return (
         <Input
@@ -146,7 +157,7 @@ const DynamicItem: React.FC<Props> = ({
       );
     }
     return <Input disabled />;
-  }, [handleValueChange, type, update, value]);
+  }, [fieldState, handleValueChange, setFieldState, update]);
   // Add new children
   const handleAddChildren = (key?: string) => {
     const defaultID = getDefaultID();
@@ -169,28 +180,56 @@ const DynamicItem: React.FC<Props> = ({
   };
   // Control add sibling
   const handleSiblingAdd = (id: string) => {
+    // Object keys must be non-empty
+    if (index === undefined && !fieldState.name) {
+      return;
+    }
     addSibling(id);
   };
   // Control remove self
   const handleRemove = () => {
-    if (getFields().length === 1) {
-      setName('');
-      setValue('');
+    console.log(currentPath.current);
+    const fields = getFields();
+    if (fields.length === 1 && fields[0].id === id) {
+      setFieldState({ type: 'string', name: '', value: '', comment: '' });
+      if (fieldState.type === 'array' || fieldState.type === 'object') {
+        setChildrenKeys([]);
+      }
+      reset();
     }
+    // remove current field from the store
     remove(currentPath.current);
+    // remove UI
     removeSelf(id);
   };
+  // Handle whether collapse
   const handleCollapse = () => {
     setCollapse((state) => !state);
   };
+  // removeSelf method as each child element
   const handleRemoveChildren = (id: string) => {
     setChildrenKeys((state) => state.filter((item) => item !== id));
     remove([...currentPath.current, id]);
   };
+  // Restore state after collapse was changed
+  useEffect(() => {
+    const { key, value, type, comment, children } = getField(
+      currentPath.current,
+    );
+    setFieldState({
+      name: key || '',
+      type,
+      value: value || '',
+      comment: comment || '',
+    });
+    if (children && children?.length > 0) {
+      setChildrenKeys(() => children.map((item) => item.id));
+    }
+  }, [getField, setFieldState]);
   return (
     <div className="space-y-2 rounded border p-2">
       <div className="flex items-center gap-4 ">
-        {type === 'object' || type === 'array' ? (
+        {fieldState.type === 'object' || fieldState.type === 'array' ? (
           <Icon
             icon={chevronRight}
             fontSize={20}
@@ -198,39 +237,43 @@ const DynamicItem: React.FC<Props> = ({
             onClick={handleCollapse}
           />
         ) : undefined}
-        {}
         <div className="flex flex-1 gap-4">
           <Select
             disabled={
-              type !== 'arrary' && index === undefined && name.length === 0
+              fieldState.type !== 'arrary' &&
+              index === undefined &&
+              fieldState.name.length === 0
             }
+            value={fieldState.type}
             options={typeOptions}
             onChange={handleTyepChange}
             defaultValue="string"
             className="flex-1"
           />
-          {type !== 'arrary' && index === undefined && (
+          {fieldState.type !== 'arrary' && index === undefined && (
             <Input
               type="text"
-              value={name}
+              value={fieldState.name}
               placeholder="Name"
-              status={name === '' ? 'error' : undefined}
+              status={fieldState.name === '' ? 'error' : undefined}
               onChange={handleNameChange}
               className="flex-1"
             />
           )}
           <div className="flex flex-1 items-center justify-center">
-            {type !== 'object' && type !== 'array'
+            {fieldState.type !== 'object' && fieldState.type !== 'array'
               ? valueInputRenderer
               : undefined}
           </div>
           <Input
+            type="text"
+            value={fieldState.comment}
             placeholder="Comment"
             className="flex-1"
             onChange={handleCommentChange}
           />
         </div>
-        {(type === 'array' || type === 'object') &&
+        {(fieldState.type === 'array' || fieldState.type === 'object') &&
         childrenKeys.length === 0 ? (
           <Tooltip title="Add child node">
             <span
@@ -273,7 +316,7 @@ const DynamicItem: React.FC<Props> = ({
               addSibling={handleAddChildren}
               removeSelf={handleRemoveChildren}
               prePath={currentPath.current}
-              index={type === 'array' ? index : undefined}
+              index={fieldState.type === 'array' ? index : undefined}
             />
           ))}
         </div>

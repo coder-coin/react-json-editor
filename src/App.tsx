@@ -7,21 +7,24 @@ import { langs } from '@uiw/codemirror-extensions-langs';
 import JSONEditor from './Editor_json';
 import JSON5Editor from './Editor_json5';
 import useJSON5Store from './stores/json5.store';
-import { generateJsonString } from './utils/json5';
+import { fieldsParser } from './utils/json5';
 
 function App() {
   const json = useEditorStore((state) => state.json);
   const fields = useJSON5Store((state) => state.fields);
   const getFields = useJSON5Store((state) => state.getFields);
+  const reset = useJSON5Store((state) => state.reset);
   const [mode, setMode] = useState('json');
   const handleModeChange = (value: boolean) => {
+    reset();
     setMode(value ? 'json5' : 'json');
   };
   const debug = () => {
     console.log(getFields());
   };
   const JSONString = useMemo(() => {
-    return '{\n' + generateJsonString(fields) + '\n}';
+    if (fields.length === 0) return '{}';
+    return '{\n' + fieldsParser(fields) + '\n}';
   }, [fields]);
   return (
     <ConfigProvider
@@ -54,7 +57,7 @@ function App() {
                 }
                 basicSetup={{ crosshairCursor: false }}
                 theme={vscodeDark}
-                extensions={[langs.json()]}
+                extensions={[langs.javascript()]}
                 readOnly
               />
             </div>

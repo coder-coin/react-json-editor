@@ -1,14 +1,11 @@
-export interface DataMeta {
+export interface Field {
   id: string;
+  path: string[];
   key: string | null;
   type: string;
   value?: string | number | boolean;
-  children?: DataMeta[];
+  children?: Field[];
   comment?: string;
-}
-
-export interface Field extends DataMeta {
-  path: string[];
 }
 
 export interface UpdateParams {

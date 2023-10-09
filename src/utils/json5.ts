@@ -1,5 +1,5 @@
 import { remove } from 'lodash-es';
-import { DataMeta, Field, UpdateParams } from '../type';
+import { Field, UpdateParams } from '../type';
 
 const tabIndent = '  ';
 
@@ -15,8 +15,12 @@ const getInitialValue = (type: string) => {
       return '';
   }
 };
-
-function updateProperties(field: DataMeta, updateParams: UpdateParams) {
+/**
+ * Update the properties of the target object
+ * @param field
+ * @param updateParams
+ */
+function updateProperties(field: Field, updateParams: UpdateParams) {
   const { key, value, comment, type } = updateParams;
   field.key = key || field.key;
   field.comment = comment || field.comment;
@@ -32,7 +36,6 @@ function updateProperties(field: DataMeta, updateParams: UpdateParams) {
   } else {
     field.value = value !== undefined ? value : field.value;
   }
-  console.log(field);
 }
 
 /**
@@ -41,13 +44,14 @@ function updateProperties(field: DataMeta, updateParams: UpdateParams) {
  * @param field
  * @returns
  */
-export function createField(target: DataMeta[], field: Field) {
+export function createField(target: Field[], field: Field) {
+  const newFields = [...target];
   const pathLength = field.path.length;
-  let current: DataMeta[] = [...target];
+  let current: Field[] = newFields;
   // Top level
   if (pathLength === 1) {
     current.push(field);
-    return current;
+    return newFields;
   }
   for (let i = 0; i < pathLength - 1; i++) {
     const upperField = current.find((item) => item.id === field.path[i]);
@@ -58,7 +62,7 @@ export function createField(target: DataMeta[], field: Field) {
     }
   }
   current.push(field);
-  return target;
+  return newFields;
 }
 /**
  * Update the specified field,return a new target object
@@ -68,20 +72,31 @@ export function createField(target: DataMeta[], field: Field) {
  * @returns
  */
 export function updateField(
-  target: DataMeta[],
+  target: Field[],
   path: string[],
   updateParams: UpdateParams,
 ) {
-  let current: DataMeta[] = [...target];
+  const newFields = [...target];
+  let current: Field[] = newFields;
   const len = path.length;
+  // If paths only contains one
   if (len === 1) {
     const item = current.find((item) => item.id === path[0]);
     if (item) {
       updateProperties(item, updateParams);
-      return current;
+    } else {
+      // Unable find target , create a new target
+      current.push({
+        id: path[0],
+        path,
+        key: updateParams.key || '',
+        type: updateParams.type || 'string',
+      });
     }
-    throw new TypeError('Paths of field should includes valid ids.');
+
+    return newFields;
   }
+  // Find field including the item which needs to be updated
   for (let i = 0; i < len - 1; i++) {
     const upperField = current.find((item) => item.id === path[i]);
     if (upperField && upperField.children) {
@@ -94,10 +109,17 @@ export function updateField(
   const item = current.find((item) => item.id === path[len - 1]);
   if (item) {
     updateProperties(item, updateParams);
-    return target;
   } else {
-    throw new TypeError('Paths of field should includes valid ids.');
+    // The item does not exist and create a new one
+    current.push({
+      id: path[len - 1],
+      path,
+      type: updateParams.type || 'string',
+      key: updateParams.key || '',
+      value: updateParams.value || '',
+    });
   }
+  return newFields;
 }
 /**
  * Remove a field from the targt and return a new target object.
@@ -105,13 +127,14 @@ export function updateField(
  * @param path
  * @returns
  */
-export function removeField(target: DataMeta[], path: string[]) {
+export function removeField(target: Field[], path: string[]) {
+  const newFields = [...target];
   const len = path.length;
-  let current = [...target];
+  let current = newFields;
   if (len === 1) {
     // Remove method will change the original array
-    remove(current, (item: DataMeta) => item.id === path[0]);
-    return current;
+    remove(current, (item: Field) => item.id === path[0]);
+    return newFields;
   }
   for (let i = 0; i < len - 1; i++) {
     const upperField = current.find((item) => item.id === path[i]);
@@ -121,33 +144,53 @@ export function removeField(target: DataMeta[], path: string[]) {
       throw new TypeError('Paths of field should includes valid ids.');
     }
   }
-  remove(current, (item: DataMeta) => item.id === path[len - 1]);
-  return target;
+  remove(current, (item: Field) => item.id === path[len - 1]);
+  return newFields;
+}
+/**
+ * Get the field by specified path
+ * @param target
+ * @param path
+ * @returns
+ */
+export function getField(target: Field[], path: string[]) {
+  const pathLength = path.length;
+  let current: Field[] = [...target];
+  for (let i = 0; i < pathLength - 1; i++) {
+    const upperField = current.find((item) => item.id === path[i]);
+    if (upperField && upperField.children) {
+      current = upperField.children;
+    } else {
+      throw new TypeError('Paths of field should includes valid ids.');
+    }
+  }
+  const item = current.find((item) => item.id === path[pathLength - 1]);
+  if (item) return item;
+  throw new TypeError('Paths of field should includes valid ids.');
 }
 
 /**
- * Generate a JSON string as a JSON'row
+ * A parser which generates a JSON string by a common field data
  * @param meta
  * @param needComma
  * @param tabIndent
  * @returns
  */
-export function generatRowString(
-  meta: DataMeta,
+export function commonFieldParser(
+  field: Field,
   needComma = true,
   tabIndent: string,
 ) {
   let value;
-  if (meta.type === 'string') {
-    value = meta.value ? `"${meta.value}"` : `""`;
+  if (field.type === 'string') {
+    value = field.value ? `"${field.value}"` : `""`;
   } else {
-    value = meta.value;
+    value = field.value;
   }
   value += needComma ? ',' : '';
-  value += meta.comment ? `  // ${meta.comment}` : '';
-  return meta.key
-    ? `${tabIndent}"${meta.key}":${value}`
-    : `${tabIndent}${value}`;
+  value += field.comment ? `  // ${field.comment}` : '';
+  const key = field.key ? `"${field.key}":` : '';
+  return tabIndent + key + value;
 }
 /**
  * Generate a JSON string by metadata array
@@ -155,22 +198,26 @@ export function generatRowString(
  * @param level
  * @returns
  */
-export function generateJsonString(metaArray: DataMeta[], level = 1) {
+export function fieldsParser(metaArray: Field[], level = 1) {
   return metaArray
     .reduce((acc, cur, index) => {
+      const comment = cur.comment ? `//  ${cur.comment}` : '';
       if (cur.type === 'array') {
         const arrayStr = `${tabIndent.repeat(level)}${
           cur.key ? `"${cur.key}":` : ''
-        }[\n${generateJsonString(cur.children!, level + 1)}\n${tabIndent.repeat(
-          level,
-        )}]${index !== metaArray.length - 1 ? ',' : ''}`;
+        }[  ${comment}\n${fieldsParser(
+          cur.children!,
+          level + 1,
+        )}\n${tabIndent.repeat(level)}]${
+          index !== metaArray.length - 1 ? ',' : ''
+        }`;
         acc.push(arrayStr);
         return acc;
       }
       if (cur.type === 'object') {
-        const arrayStr = `${tabIndent.repeat(level)}"${
-          cur.key
-        }":{\n${generateJsonString(
+        const arrayStr = `${tabIndent.repeat(level)}${
+          cur.key ? `"${cur.key}":` : ''
+        }{  ${comment}\n${fieldsParser(
           cur.children!,
           level + 1,
         )}\n${tabIndent.repeat(level)}}${
@@ -180,7 +227,7 @@ export function generateJsonString(metaArray: DataMeta[], level = 1) {
         return acc;
       }
       acc.push(
-        generatRowString(
+        commonFieldParser(
           cur,
           index !== metaArray.length - 1,
           tabIndent.repeat(level),
